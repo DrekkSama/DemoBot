@@ -27,6 +27,10 @@ class CompetitiveBot(BotAI):
         This code runs continually throughout the game
         Populate this function with whatever your bot should do!
         """
+        if iteration == 0:
+            for worker in self.workers:
+                worker.attack(self.enemy_start_locations[0])
+                
         nexus_list = self.townhalls(UnitTypeId.NEXUS).ready.idle # get a list of idle nexuses
         for nexus in nexus_list: # loop through all idle nexuses
             if self.can_afford(UnitTypeId.PROBE) and self.workers.amount <= 15: # if we can afford a probe and have less than 15 workers
