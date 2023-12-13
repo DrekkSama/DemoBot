@@ -6,7 +6,7 @@ class CompetitiveBot(BotAI):
     NAME: str = "Zippy"
     """This bot's name"""
 
-    RACE: Race = Race.Terran
+    RACE: Race = Race.Protoss
     """This bot's Starcraft 2 race.
     Options are:
         Race.Terran
@@ -27,13 +27,13 @@ class CompetitiveBot(BotAI):
         This code runs continually throughout the game
         Populate this function with whatever your bot should do!
         """
-        for loop_cc in self.workers:
-            cc_list = self.townhalls(UnitTypeId.COMMANDCENTER).ready.idle
-            if self.can_afford(UnitTypeId.SCV) and self.workers.amount <= 15 and cc_list.exists:
-                self.townhalls.ready.random.train(UnitTypeId.SCV)
-            elif self.workers.amount == 15:
-                for worker in self.workers:
-                    worker.attack(self.enemy_start_locations[0])
+        nexus_list = self.townhalls(UnitTypeId.NEXUS).ready.idle # get a list of idle nexuses
+        for nexus in nexus_list: # loop through all idle nexuses
+            if self.can_afford(UnitTypeId.PROBE) and self.workers.amount <= 15: # if we can afford a probe and have less than 15 workers
+                nexus.train(UnitTypeId.PROBE) # train a probe
+            elif self.workers.amount == 15: # if we have 15 workers
+                for worker in self.workers: # loop through all workers
+                    worker.attack(self.enemy_start_locations[0]) # attack the enemy start location
 
     async def on_end(self, result: Result):
         """
