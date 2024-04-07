@@ -1,11 +1,11 @@
 from sc2.bot_ai import BotAI, Race
 from sc2.data import Result
 from sc2.ids.unit_typeid import UnitTypeId
-from sc2.ids.ability_id import AbilityId
 
+import random
 
 class CompetitiveBot(BotAI):
-    NAME: str = "Zippy"
+    NAME: str = "Demo Bot"
     """This bot's name"""
 
     RACE: Race = Race.Protoss
@@ -16,7 +16,10 @@ class CompetitiveBot(BotAI):
         Race.Protoss
         Race.Random
     """
-
+    def __init__(self):
+        super().__init__()
+        self.occupied_positions = []
+       
     async def on_start(self):
         """
         This code runs once at the start of the game
@@ -24,33 +27,66 @@ class CompetitiveBot(BotAI):
         """
         print("Game started")
         self.starting_nexus = self.townhalls.first  # store the starting nexus
+        self.probe = self.workers.random
+       
 
 
-    async def on_step(self, iteration: int):
-        """
-        This code runs continually throughout the game
-        Populate this function with whatever your bot should do!
-        """
-      
-        nexus_list = self.townhalls(UnitTypeId.NEXUS).ready.idle # get a list of idle nexuses
-        for nexus in nexus_list: # loop through all idle nexuses
-            if nexus.energy >= 50: # if the nexus has enough energy to chrono boost
-                abilities = await self.get_available_abilities(nexus) # get the abilities of the nexus
-                if AbilityId.EFFECT_CHRONOBOOSTENERGYCOST in abilities: # check if chrono boost ability is available
-                    target = self.starting_nexus  # target the starting nexus
-                    nexus(AbilityId.EFFECT_CHRONOBOOSTENERGYCOST, target) # chrono boost the nexus
-                    print("Chrono Boost in da house - Bzzooom")
-                    
-            if self.can_afford(UnitTypeId.PROBE) and self.workers.amount <= 15: # if we can afford a probe and have less than 15 workers
-                nexus.train(UnitTypeId.PROBE) # train a probe
-                print("Trained Probe - Bzzzt")
-            elif self.workers.amount == 15: # if we have 15 workers
-                for worker in self.workers: # loop through all workers
-                    target_area = self.enemy_start_locations[0].position.offset((-4, -4))  # Create a new point 4 units to the left and below the enemy start location
-                    worker.attack(target_area)  # Attack the target area
-                print("ATTACK! Boop!")
-                    
-                    
+    async def on_step(self, iteration):
+        if iteration == 0:
+            await self.chat_send("(probe)(pylon)(cannon)(cannon)(gg)")
+
+        if not self.townhalls:
+            # Attack with all workers if we don't have any nexuses left, attack-move on enemy spawn (doesn't work on 4 player map) so that probes auto attack on the way
+            for worker in self.workers:
+                worker.attack(self.enemy_start_locations[0])
+            return
+
+        nexus = self.townhalls.random
+
+        # Make probes until we have 16 total
+        if self.supply_workers < 16 and nexus.is_idle:
+            if self.can_afford(UnitTypeId.PROBE):
+                nexus.train(UnitTypeId.PROBE)
+
+        # If we have no pylon, build one near starting nexus
+        elif not self.structures(UnitTypeId.PYLON) and self.already_pending(UnitTypeId.PYLON) == 0:
+            if self.can_afford(UnitTypeId.PYLON):
+                await self.build(UnitTypeId.PYLON, near=nexus)
+
+        # If we have no forge, build one near the pylon that is closest to our starting nexus
+        elif not self.structures(UnitTypeId.FORGE):
+            pylon_ready = self.structures(UnitTypeId.PYLON).ready
+            if pylon_ready:
+                if self.can_afford(UnitTypeId.FORGE):
+                    await self.build(UnitTypeId.FORGE, near=pylon_ready.closest_to(nexus))
+
+        # If we have less than 2 pylons, build one at the enemy base
+        elif self.structures(UnitTypeId.PYLON).amount < 2:
+            if self.can_afford(UnitTypeId.PYLON):
+                pos = self.enemy_start_locations[0].towards(self.game_info.map_center, random.randrange(8, 15))
+                self.probe.build(UnitTypeId.PYLON, pos)
+
+        # If we have no cannons but at least 2 completed pylons, automatically find a placement location and build them near enemy start location
+        elif self.structures(UnitTypeId.PHOTONCANNON).amount < 5:
+            if self.structures(UnitTypeId.PYLON).ready.amount >= 2 and self.can_afford(UnitTypeId.PHOTONCANNON) and not self.probe.orders:
+                pylon = self.structures(UnitTypeId.PYLON).closer_than(20, self.enemy_start_locations[0]).random
+                # Create a 6x6 grid of positions around the Pylon
+                positions = [pylon.position.to2.offset((x, y)) for x in range(-3, 4) for y in range(-3, 4)]
+                positions = [pos for pos in positions if pos not in self.occupied_positions]  # Exclude already occupied positions
+                random.shuffle(positions)  # Shuffle the list of positions
+        
+                # build cannons in available positions
+                for pos in positions:
+                    if self.can_place(UnitTypeId.PHOTONCANNON, pos):
+                        position = pos  # Use the current position in the loop
+                        placement = await self.find_placement(UnitTypeId.PHOTONCANNON, near=position, placement_step=1)
+                        if placement is not None:  # Check if a placement was found
+                            self.occupied_positions.append(placement)  # Add the placement to the list of occupied positions
+                            self.probe.build(UnitTypeId.PHOTONCANNON, placement)  # Build the Photon Cannon at the placement
+                        
+                
+        
+          
 
     async def on_end(self, result: Result):
         """
